@@ -10,30 +10,35 @@ from time import time
 import argparse
 
 # Creates Argument Parser object named parser
-parser = argparse.ArgumentParser()
+def parse_args():
+    """
+    Parse command line arguments.
+    """
+    parser = argparse.ArgumentParser(description="Image Classification Model Trainer")
 
-parser.add_argument('image_path', type = str, 
-                    help = 'Provide the path to a singe image (required)')
-parser.add_argument('save_path', type = str, 
-                    help = 'Provide the path to the file of the trained model (required)')
+    # Required arguments
+    parser.add_argument("image_path", type=str, help="Path to a single image (required)")
+    parser.add_argument("save_path", type=str, help="Path to the file of the trained model (required)")
 
-parser.add_argument('--category_names', type = str, #default = 'cat_to_name.json',
-                    help = 'Use a mapping of categories to real names')
-parser.add_argument('--top_k', type = int, default = 5,
-                    help = 'Return top K most likely classes. Default value is 5')
-# GPU
-parser.add_argument('--gpu', action='store_true',
-                    help = "Add to activate CUDA")
+    # Optional arguments
+    parser.add_argument("--category_names", type=str, default="cat_to_name.json", 
+                        help="Mapping of categories to real names (default: cat_to_name.json)")
+    parser.add_argument("--top_k", type=int, default=5, 
+                        help="Return top K most likely classes (default: 5)")
+    parser.add_argument("--gpu", action="store_true", 
+                        help="Activate CUDA (default: False)")
 
-args_in = parser.parse_args()
+    return parser.parse_args()
 
+def main():
+    args = parse_args()
 
+    # Set device (GPU or CPU)
+    device = torch.device("cuda" if args.gpu else "cpu")
+    print(f"****** Using {device.type.upper()} ****************************")
 
-if args_in.gpu:
-    device = torch.device("cuda")
-    print("****** CUDA activated ****************************")
-else:
-    device = torch.device("cpu")
+if __name__ == "__main__":
+    main()
 
 
 ### ------------------------------------------------------------
@@ -87,38 +92,37 @@ def process_image(image):
     return img
 
 
-
-
-
-def predict(image_path, model, topk=5):
-    ''' Predict the class (or classes) of an image using a trained deep learning model.
+def predict(image_path, model, device, topk=5):
     '''
-    
-    # TODO: Implement the code to predict the class from an image file
+    Predict the class (or classes) of an image using a trained deep learning model.
+    '''
+    # Process the image
     image = process_image(image_path)
     image = torch.from_numpy(image).type(torch.FloatTensor)
     image = image.unsqueeze(0) 
     image = image.to(device)
-    
-    # to make sure no drop; otherwise, the output is random
+
+    # Set the model to evaluation mode
     model.eval()
-    
-    with torch.no_grad ():
+
+    # Perform inference
+    with torch.no_grad():
         output = model.forward(image)
-        
+
+    # Calculate probabilities
     output_prob = torch.exp(output)
-    
-    probs, indeces = output_prob.topk(topk)
-    probs   =   probs.to('cpu').numpy().tolist()[0]
-    indeces = indeces.to('cpu').numpy().tolist()[0]
-    
-    mapping = {val: key for key, val in model.class_to_idx.items()}
-    classes = [mapping[item] for item in indeces]
-    
+
+    # Get top-k probabilities and indices
+    probs, indices = output_prob.topk(topk)
+    probs = probs.to('cpu').numpy().tolist()[0]
+    indices = indices.to('cpu').numpy().tolist()[0]
+
+    # Map indices to class labels
+    class_to_idx = model.class_to_idx
+    idx_to_class = {val: key for key, val in class_to_idx.items()}
+    classes = [idx_to_class[item] for item in indices]
+
     return probs, classes
-
-
-
 
 
 ### ------------------------------------------------------------
@@ -126,33 +130,33 @@ def predict(image_path, model, topk=5):
 ### ------------------------------------------------------------
 
 image_path = args_in.image_path
-top_k      = args_in.top_k
+top_k = args_in.top_k
+device = args_in.device  # assuming device is passed as an argument
 
-probs, classes = predict(image_path, model, topk=top_k)
-
+probs, classes = predict(image_path, model, device, topk=top_k)
 
 
 ### ------------------------------------------------------------
 ###                         label mapping
 ### ------------------------------------------------------------
 
-# print(args_in.category_names)
-
 if args_in.category_names:
-    with open('cat_to_name.json', 'r') as f:
-        cat_to_name = json.load(f)
-    names = [cat_to_name[key] for key in classes]
-    print("Class name:")
-    print(names)
-### ------------------------------------------------------------
+    with open('cat_to_name.json', 'r') as file:
+        category_mapping = json.load(file)
+    
+    # Map class indices to their corresponding names
+    class_names = [category_mapping[key] for key in classes]
+    
+    # Print class names
+    print("Class Names:")
+    print(class_names)
 
-print("Class number:")
+# Print class numbers and probabilities
+print("\nClass Numbers:")
 print(classes)
-print("Probability (%):")
-for idx, item in enumerate(probs):
-    probs[idx] = round(item*100, 2)
-print(probs)
-
+print("Probabilities (%):")
+probabilities = [round(prob * 100, 2) for prob in probs]
+print(probabilities)
 
 # command line usage: 
 # python predict.py flowers/test/1/image_06743.jpg checkpoint.pth --gpu

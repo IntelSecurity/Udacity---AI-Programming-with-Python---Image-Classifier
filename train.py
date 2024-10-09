@@ -8,82 +8,100 @@ from torchvision import datasets, transforms, models
 from collections import OrderedDict
 from time import time
 
-# Creates Argument Parser object named parser
-parser = argparse.ArgumentParser()
+# Create an Argument Parser object named parser
+parser = argparse.ArgumentParser(description='Train a neural network')
 
-parser.add_argument('data_dir', type = str, #default = 'flowers',
-                    help = 'Provide the data directory, mandatory')
-parser.add_argument('--save_dir', type = str, default = './',
-                    help = 'Provide the save directory')
-parser.add_argument('--arch', type = str, default = 'densenet121',
-                    help = 'densenet121 or vgg13')
-# hyperparameters
-parser.add_argument('--learning_rate', type = float, default = 0.001,
-                    help = 'Learning rate, default value 0.001')
-parser.add_argument('--hidden_units', type = int, default = 512,
-                    help = 'Number of hidden units. Default value is 512')
-parser.add_argument('--epochs', type = int, default = 20,
-                    help = 'Number of epochs')
-# GPU
-parser.add_argument('--gpu', action='store_true',
-                    help = "Add to activate CUDA")
+# Define the required arguments
+parser.add_argument('data_dir', type=str, help='Provide the data directory (mandatory)')
 
-#setting values data loading
+# Define the optional arguments
+parser.add_argument('--save_dir', type=str, default='./', help='Provide the save directory')
+parser.add_argument('--arch', type=str, default='densenet121', choices=['densenet121', 'vgg13'], help='Choose the architecture (densenet121 or vgg13)')
+
+# Define the hyperparameters
+parser.add_argument('--learning_rate', type=float, default=0.001, help='Learning rate (default: 0.001)')
+parser.add_argument('--hidden_units', type=int, default=512, help='Number of hidden units (default: 512)')
+parser.add_argument('--epochs', type=int, default=20, help='Number of epochs')
+
+# Define the GPU option
+parser.add_argument('--gpu', action='store_true', help='Activate CUDA')
+
+# Parse the arguments
+args = parser.parse_args()
+
+# Setting values and data loading
 args_in = parser.parse_args()
 
-if args_in.gpu:
-    device = torch.device("cuda")
-    print("****** CUDA activated ********************")
-else:
-    device = torch.device("cpu")
+# Determine the device to use (GPU or CPU)
+device = torch.device("cuda" if args_in.gpu else "cpu")
+
+# Print a message indicating which device is being used
+print(f"****** Using {device} ********************")
 
 ### ------------------------------------------------------------
 ###                         load the data
 ### ------------------------------------------------------------
 
-print("------ loading data ----------------------")
+# Define directories
+data_dir = args_in.data_dir
+train_dir = f"{data_dir}/train"
+valid_dir = f"{data_dir}/valid"
+test_dir = f"{data_dir}/test"
 
-data_dir  = args_in.data_dir
-train_dir = data_dir + '/train'
-valid_dir = data_dir + '/valid'
-test_dir  = data_dir + '/test'
+# Define transforms for training, validation, and testing sets
+transform_config = {
+    "train": [
+        transforms.RandomRotation(30),
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ],
+    "valid": [
+        transforms.Resize(255),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ],
+    "test": [
+        transforms.Resize(255),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ]
+}
 
-# TODO: Define your transforms for the training, validation, and testing sets
-train_transforms = transforms.Compose([transforms.RandomRotation(30),
-                                       transforms.RandomResizedCrop(224),
-                                       transforms.RandomHorizontalFlip(),
-                                       transforms.ToTensor(),
-                                       transforms.Normalize([0.485, 0.456, 0.406], 
-                                                            [0.229, 0.224, 0.225])])
+train_transforms = transforms.Compose(transform_config["train"])
+valid_transforms = transforms.Compose(transform_config["valid"])
+test_transforms = transforms.Compose(transform_config["test"])
 
-# no need to perform randomization on validation/test samples; only need to normalize
-valid_transforms = transforms.Compose([transforms.Resize(255),
-                                       transforms.CenterCrop(224),
-                                       transforms.ToTensor(),
-                                       transforms.Normalize([0.485, 0.456, 0.406], 
-                                                            [0.229, 0.224, 0.225])])
+# Load datasets with ImageFolder
+datasets_config = {
+    "train": datasets.ImageFolder(train_dir, transform=train_transforms),
+    "valid": datasets.ImageFolder(valid_dir, transform=valid_transforms),
+    "test": datasets.ImageFolder(test_dir, transform=test_transforms)
+}
 
-test_transforms  = transforms.Compose([transforms.Resize(255),
-                                       transforms.CenterCrop(224),
-                                       transforms.ToTensor(),
-                                       transforms.Normalize([0.485, 0.456, 0.406], 
-                                                            [0.229, 0.224, 0.225])])
+train_datasets = datasets_config["train"]
+valid_datasets = datasets_config["valid"]
+test_datasets = datasets_config["test"]
 
-# TODO: Load the datasets with ImageFolder
-train_datasets = datasets.ImageFolder(train_dir, transform = train_transforms)
-valid_datasets = datasets.ImageFolder(valid_dir, transform = valid_transforms)
-test_datasets  = datasets.ImageFolder(test_dir,  transform = test_transforms)
+# Define dataloaders
+batch_size = 64
+dataloaders_config = {
+    "train": torch.utils.data.DataLoader(train_datasets, batch_size=batch_size, shuffle=True),
+    "valid": torch.utils.data.DataLoader(valid_datasets, batch_size=batch_size),
+    "test": torch.utils.data.DataLoader(test_datasets, batch_size=batch_size)
+}
 
-# TODO: Using the image datasets and the trainforms, define the dataloaders
-train_loader = torch.utils.data.DataLoader(train_datasets, batch_size = 64, shuffle = True)
-valid_loader = torch.utils.data.DataLoader(valid_datasets, batch_size = 64)
-test_loader  = torch.utils.data.DataLoader(test_datasets,  batch_size = 64)
+train_loader = dataloaders_config["train"]
+valid_loader = dataloaders_config["valid"]
+test_loader = dataloaders_config["test"]
+
 ### ------------------------------------------------------------
 
-
-
 ### ------------------------------------------------------------
-###                         lebel mapping
+###                         Label mapping
 ### ------------------------------------------------------------
 with open('cat_to_name.json', 'r') as f:
     cat_to_name = json.load(f)
@@ -101,42 +119,50 @@ print("------ data loading finished -------------")
 
 print("------ building the model ----------------")
 
-layers        = args_in.hidden_units
+layers = args_in.hidden_units
 learning_rate = args_in.learning_rate
 
+# Define a dictionary to map architecture names to their corresponding models
+arch_models = {
+    'densenet121': models.densenet121,
+    'vgg13': models.vgg13
+}
+
+# Check if the architecture is supported
+if args_in.arch not in arch_models:
+    raise ValueError('Model arch error.')
+
+# Create the model and freeze its parameters
+model = arch_models[args_in.arch](pretrained=True)
+for param in model.parameters():
+    param.requires_grad = False
+
+# Define a function to create the classifier
+def create_classifier(input_dim, layers):
+    return nn.Sequential(OrderedDict([
+        ('fc1', nn.Linear(input_dim, layers)),
+        ('relu', nn.ReLU()),
+        ('dropout', nn.Dropout(0.2)),
+        ('fc2', nn.Linear(layers, 102)),
+        ('output', nn.LogSoftmax(dim=1))
+    ]))
+
+# Create the classifier based on the architecture
 if args_in.arch == 'densenet121':
-    model = models.densenet121(pretrained=True)
-    # Freeze parameters so we don't backprop through them
-    for param in model.parameters():
-        param.requires_grad = False
-    model.classifier = nn.Sequential(OrderedDict([
-                              ('fc1', nn.Linear(1024, layers)),
-                              ('relu', nn.ReLU()),
-                              ('dropout', nn.Dropout(0.2)),
-                              ('fc2', nn.Linear(layers, 102)),
-                              ('output', nn.LogSoftmax(dim=1))
-                              ]))
+    input_dim = 1024
 elif args_in.arch == 'vgg13':
-    model = models.vgg13(pretrained = True)
-    # Freeze parameters so we don't backprop through them
-    for param in model.parameters():
-        param.requires_grad = False
-    model.classifier = nn.Sequential(OrderedDict([
-                              ('fc1', nn.Linear(25088, layers)),
-                              ('relu', nn.ReLU()),
-                              ('dropout', nn.Dropout(0.2)),
-                              ('fc2', nn.Linear(layers, 102)),
-                              ('output', nn.LogSoftmax(dim=1))
-                              ]))
+    input_dim = 25088
 else:
     raise ValueError('Model arch error.')
 
+model.classifier = create_classifier(input_dim, layers)
+
+# Define the criterion and optimizer
 criterion = nn.NLLLoss()
 optimizer = optim.Adam(model.classifier.parameters(), lr=learning_rate)
-model.to(device);
 
-print("****** model arch: " + args_in.arch)
-print("------ model building finished -----------")
+# Move the model to the device
+model.to(device)
 ### ------------------------------------------------------------
 
 
